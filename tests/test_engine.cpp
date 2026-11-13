@@ -19,8 +19,8 @@ State initialstate() {
 bool approx(float a, float b) { return std::fabs(a - b) < 1e-4f; }
 
 void test_damage_after_armor() {
-    assert(approx(damage_after_armor(100.f, 0.f), 100.f));
-    assert(approx(damage_after_armor(100.f, 100.f), 50.f));
+    assert(approx(damage_after_resist(100.f, 0.f), 100.f));
+    assert(approx(damage_after_resist(100.f, 100.f), 50.f));
 }
 
 void test_attack_interval() {
