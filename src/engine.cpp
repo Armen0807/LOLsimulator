@@ -5,19 +5,141 @@
 #include <cstdint>
 #include <cstring>
 #include <iostream>
+#include <unordered_map>
+#include <array>
+#include <limits>
 
 constexpr std::uint64_t FNV_OFFSET = 14695981039346656037ULL;
 constexpr std::uint64_t FNV_PRIME  = 1099511628211ULL;
 
-float damage_after_armor(const float raw,const float armor) {
-    return raw * (100 / (100+armor));
+
+float damage_after_resist(const float raw,const float resist) {
+    return raw * (100 / (100+resist));
 }
+
+float spell_damage( const ChampionDef& caster,const ChampionDef& target, const int x) {
+
+
+        float their_resist = target.physic_resist;
+
+        const float ad_damage = caster.spells[x].ad_ratio * caster.ad;
+        const float ap_damage = caster.spells[x].ap_ratio * caster.ap;
+
+        if (caster.spells[x].type == DamageType::Magic) {
+            their_resist = target.magic_resist;
+        }
+
+        const float full_damage = caster.spells[x].base_damage +
+            ad_damage + ap_damage;
+
+        return  damage_after_resist(full_damage,their_resist);
+    }
+
 
 int attack_interval_ticks(const float attack_speed) {
     return static_cast<int>(TICKS_PER_SECOND / attack_speed);
 }
 
-State step(const State& s, const ChampionDef* defs, const TickActions) {
+bool is_legal(const State& s, const ChampionDef* defs, int i, Action a) {
+    if (s.tick < s.units[i].busy_until_tick) {
+        return false;
+    }
+    switch (a) {
+
+        case Action::None:
+            break;
+
+        case Action::AutoAttack:
+            if (s.tick < s.units[i].next_attack_tick) {
+                return false;
+            }
+            break;
+
+        case Action::CastQ:
+        case Action::CastW:
+        case Action::CastE:
+        case Action::CastR: {
+
+            int x = static_cast<int>(a) - static_cast<int>(Action::CastQ);
+
+            if (s.tick < s.units[i].spell_ready_tick[x]) {
+                return false;
+            }
+            if (defs[s.units[i].def_id].spells[x].cooldown_ticks == 0) {
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+float score_action(const State& s, const ChampionDef* defs, int i, Action a) {
+    if (!is_legal(s,defs,i,a)) {
+        return -std::numeric_limits<float>::infinity();
+    }
+
+    const int other = 1 - i;
+
+    const UnitState& me = s.units[i];
+    const ChampionDef& my_def = defs[me.def_id];
+    const ChampionDef& their_def = defs[s.units[other].def_id];
+
+    const float DAA= damage_after_resist(my_def.ad,their_def.physic_resist);
+
+    switch (a) {
+        case Action::None:
+            return 0.f;
+        case Action::AutoAttack:
+            return DAA;
+
+        case Action::CastQ:
+        case Action::CastW:
+        case Action::CastE:
+        case Action::CastR: {
+
+            const int x = static_cast<int>(a) - static_cast<int>(Action::CastQ);
+            const float lambda = 1.00 / attack_interval_ticks(my_def.attack_speed);
+
+            const int cast_ticks = my_def.spells[x].cast_ticks;
+
+            const float cost = cast_ticks * DAA * lambda;
+            const float Dx = spell_damage(my_def,their_def,x);
+
+            return Dx - cost;
+            }
+        }
+
+    return 0.f;
+}
+
+Action best_action(const State& s, const ChampionDef* defs,int i) {
+    float highest_score = 0;
+    Action action_wmaxscore = Action::None;
+    constexpr std::array all_actions = {
+        Action::None, Action::AutoAttack, Action::CastQ,
+        Action::CastW, Action::CastE, Action::CastR
+    };
+
+    for (Action a : all_actions) {
+        float current_score = score_action(s,defs,i,a);
+        if (current_score > highest_score) {
+            highest_score = current_score;
+            action_wmaxscore = a;
+        }
+    }
+    return action_wmaxscore;
+}
+
+TickActions scripted_actions(const State& s, const ChampionDef* defs) {
+    TickActions ta{};
+
+    for (int i = 0; i < 2; i++) {
+        ta.act[i] = best_action(s,defs,i);
+    }
+    return ta;}
+
+State step(const State& s, const ChampionDef* defs, const TickActions& action) {
     State n = s;
     for (int i = 0; i < 2; i++) {
         int other = 1 - i;
@@ -26,16 +148,40 @@ State step(const State& s, const ChampionDef* defs, const TickActions) {
         const ChampionDef& my_def = defs[me.def_id];
         const ChampionDef& their_def = defs[s.units[other].def_id];
 
-        if (s.tick >= me.busy_until_tick) {
-            if (s.tick >= spell_ready_tick[x])
-            if (s.tick >= me.next_attack_tick) {
-                n.units[other].hp -= damage_after_resist(my_def.ad,their_def.physic_resist);
-                n.units[i].next_attack_tick = s.tick + attack_interval_ticks(my_def.attack_speed);
+        if (s.tick < me.busy_until_tick) {
+            continue;
+        }
+        switch (Action a = action.act[i]) {
+            case Action::None:
+                break;
+            case Action::AutoAttack:
+                if (is_legal(s,defs,i,a)) {
+                    n.units[other].hp -= damage_after_resist(my_def.ad,their_def.physic_resist);
+                    n.units[i].next_attack_tick = s.tick + attack_interval_ticks(my_def.attack_speed);
+                }
+                break;
+
+            case Action::CastQ:
+            case Action::CastW:
+            case Action::CastE:
+            case Action::CastR: {
+
+                if (!is_legal(s,defs,i,a)) {
+                    break;
+                }
+
+                const int x = static_cast<int>(a) - static_cast<int>(Action::CastQ);
+
+                const float full_damage = spell_damage(my_def,their_def,x);
+
+                n.units[other].hp -= full_damage;
+                n.units[i].spell_ready_tick[x] = s.tick + my_def.spells[x].cooldown_ticks;
+                n.units[i].busy_until_tick  = s.tick + my_def.spells[x].cast_ticks;
+                break;
             }
         }
-
-        n.tick = s.tick + 1;
     }
+    n.tick = s.tick + 1;
     return n;}
 
 std::uint32_t float_bits(const float x) {
@@ -62,10 +208,14 @@ uint64_t hash_state(const State& s) {
     }
 return h;}
 
+
 State run_fight(const State& initial, const ChampionDef* defs) {
     State s = initial;
     while (s.units[0].hp > 0 && s.units[1].hp > 0) {
-        s = step(s,defs);
+        TickActions ta = scripted_actions(s, defs);
+        s = step(s,defs,ta);
     }
     return s;
 }
+
+

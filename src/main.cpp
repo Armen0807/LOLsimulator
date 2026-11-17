@@ -3,9 +3,15 @@
 
 
 int main() {
+    SpellDef spellQ = {
+        .cooldown_ticks = 15, .cast_ticks = 2, .base_damage = 150.f, .ad_ratio = 1.10, .ap_ratio = 1.10 , .type = DamageType::Magic
+    };
+
     ChampionDef defs[2] = {
-        {1000.f,100.f,0.f,1.0f},
-        {1000.f, 80.f,100.f,1.0f}
+        { .max_hp = 1000.f, .ad = 100.f, .attack_speed = 1.0f, .ap = 100.f,
+            .physic_resist = 0.f, .magic_resist = 50, .spells = {spellQ}  },
+        { .max_hp = 1000.f, .ad =  80.f, .attack_speed = 1.0f, .ap = 100.f,
+            .physic_resist = 100.f,.magic_resist = 50 }
     };
 
     State s{};
