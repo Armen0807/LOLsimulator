@@ -41,6 +41,8 @@ int attack_interval_ticks(const float attack_speed) {
 }
 
 bool is_legal(const State& s, const ChampionDef* defs, int i, Action a) {
+    if (a == Action::None) return true;
+
     if (s.tick < s.units[i].busy_until_tick) {
         return false;
     }
@@ -183,6 +185,64 @@ State step(const State& s, const ChampionDef* defs, const TickActions& action) {
     }
     n.tick = s.tick + 1;
     return n;}
+
+float normhp(const UnitState& u, const ChampionDef& champ) {
+    return u.hp / champ.max_hp;
+}
+
+float evaluate(const State& s,const ChampionDef* defs) {
+    const ChampionDef& A = defs[s.units[0].def_id];
+    const ChampionDef& B = defs[s.units[1].def_id];
+
+    if (s.units[0].hp > 0 && s.units[1].hp  > 0 ) {
+        float normhpA = normhp(s.units[0],A);
+        float normhpB = normhp(s.units[1],B);
+
+        return normhpA - normhpB;
+    }
+    if (s.units[0].hp <= 0 && s.units[1].hp  <= 0 ) {
+        return 0.f;
+    }
+    if (s.units[0].hp < 0) {
+        return -1.f;
+    }
+    if (s.units[1].hp < 0) {
+        return 1.f;
+    }
+    return 0.f;}
+
+float rollout(const State& s, const ChampionDef* defs, int depth) {
+    State n = s;
+    for (int k = 0; k < depth && n.units[0].hp > 0 && n.units[1].hp > 0; k++) {
+        TickActions action = scripted_actions(n, defs);
+        n = step(n, defs,action);
+    }
+    return evaluate(n, defs);
+}
+
+float search(const State& s, const ChampionDef* defs, int depth) {
+    float max_value = -2.f;
+
+    if (s.units[0].hp <= 0 || s.units[1].hp <= 0 || depth == 0) {
+        return evaluate(s,defs);
+    }
+
+    constexpr std::array all_actions = {
+        Action::None, Action::AutoAttack, Action::CastQ,
+        Action::CastW, Action::CastE, Action::CastR
+    };
+
+    for (Action action : all_actions) {
+        if (is_legal(s,defs,0,action)) {
+            TickActions ta{};
+            ta.act[0] = action;
+            ta.act[1] = best_action(s,defs,1);
+
+            State next = step(s,defs,ta);
+            max_value = std::max(max_value,search(next,defs,depth - 1));
+        }
+    }
+return max_value;}
 
 std::uint32_t float_bits(const float x) {
     std::uint32_t bits;

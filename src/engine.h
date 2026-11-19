@@ -34,6 +34,9 @@ float damage_after_resist(float raw,float resist); // done -> to be verified
 int attack_interval_ticks(float attack_speed); // done
 bool is_legal(const State& s, const ChampionDef* defs, int i, Action a); // to be verified
 float score_action(const State& s, const ChampionDef* defs, int i, Action a); // to be verified
+float evaluate(const State& s,const ChampionDef* defs);
+float search(const State& s, const ChampionDef*, int depth);
+float rollout(const State& s, const ChampionDef* defs, int depth);
 
 
 State step(const State& s, const ChampionDef* defs, const TickActions& actions); // done -> to be verified
