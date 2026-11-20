@@ -24,7 +24,7 @@ int main() {
     s.units[1] = {.def_id = 1, .hp = 1000.f,.next_attack_tick = 0};
 
     State final_state = run_fight(s,defs);
-    const int D = 26;
+    const int D = 23;
 
     auto t0 = std::chrono::steady_clock::now();
     float best = search(s, defs, D);

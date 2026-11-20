@@ -37,6 +37,8 @@ float score_action(const State& s, const ChampionDef* defs, int i, Action a); //
 float evaluate(const State& s,const ChampionDef* defs);
 float search(const State& s, const ChampionDef*, int depth);
 float rollout(const State& s, const ChampionDef* defs, int depth);
+float q_value(const State& s, const ChampionDef* defs, int depth, Action a);
+float regret(const State& s, const ChampionDef* defs, const int depth, Action a);
 
 
 State step(const State& s, const ChampionDef* defs, const TickActions& actions); // done -> to be verified
